@@ -16,11 +16,11 @@ class TrainState(TrainState):
 
 @dataclass
 class GD_Output:
-    theta: jnp.array
+    theta: np.array
     converged: bool
     step: int
-    objective_value: jnp.float32
-    grads: jnp.array
+    objective_value: float
+    grads: np.array
 
 class GradientDescent:
 
@@ -29,6 +29,28 @@ class GradientDescent:
         self.initilization_fn = initilization_fn
         self.optimizer = optimizer
         self.data = data
+
+    @staticmethod
+    def _collect_output(res):
+        return GD_Output(
+            theta=np.asarray(res.params),
+            converged=res.converged.item(),
+            step=res.step.item(),
+            objective_value=res.obj_keeper.item(),
+            grads=np.asarray(res.grads_keeper)
+        )
+
+    @staticmethod
+    def _clean_results(res):
+        idx_fittest = jnp.argmin(res.obj_keeper)
+        res = res.replace(
+            params=res.params[idx_fittest],
+            converged=res.converged[idx_fittest],
+            step=res.step[idx_fittest],
+            obj_keeper=res.obj_keeper[idx_fittest],
+            grads_keeper=res.grads_keeper[idx_fittest]
+        )
+        return res
 
     @partial(jax.jit, static_argnums=(0, ))
     def _initialize_theta(self, rng):
@@ -42,10 +64,7 @@ class GradientDescent:
         obj_converged = jnp.less_equal(jnp.linalg.norm(obj_value - obj_old), self.obj_threshold)
         grads_converged = jnp.less_equal(jnp.linalg.norm(grads - grads_old), self.grad_threshold)
 
-        return jnp.logical_or(
-            jnp.logical_or(obj_converged, grads_converged),
-            jnp.greater_equal(training.step, training.max_epochs)
-        )
+        return jnp.logical_or(obj_converged, grads_converged)
 
     @partial(jax.jit, static_argnums=(0,))
     def _step(self, args):
@@ -64,7 +83,8 @@ class GradientDescent:
     @staticmethod
     @partial(jax.jit)
     def cond_fun(args):
-        return jnp.logical_not(args[0].converged)
+        steps_exceeded = jnp.greater_equal(args[0].step, args[0].max_epochs)
+        return jnp.logical_or(jnp.logical_not(args[0].converged), steps_exceeded)
 
     @partial(jax.jit, static_argnums=(0, ))
     def _run_single(self, rng, max_epochs=20_000):
@@ -87,28 +107,21 @@ class GradientDescent:
 
         training, data = runner
 
-        # res = GD_Output(training.params, training.converged, training.step, training.obj_keeper, training.grads_keeper)
+        return training
 
-        res = {
-            "theta": training.params,
-            "converged": training.converged,
-            "steps": training.step,
-            "objective_value": training.obj_keeper,
-            "grads": training.grads_keeper,
-        }
-
-        return res
-
-    def _run(self, rng, n_inits=1, max_epochs=20_000, obj_threshold=1e-12, grad_threshold=1e-12):
+    def _run(self, rng, n_inits=1, max_epochs=100_000, obj_threshold=1e-6, grad_threshold=1e-6):
 
         self.obj_threshold = obj_threshold
         self.grad_threshold = grad_threshold
 
         if n_inits > 1:
             rngs = jax.random.split(rng, n_inits)
-            return jax.jit(jax.vmap(self._run_single, in_axes=(0, None)))(rngs, max_epochs)
+            res = jax.jit(jax.vmap(self._run_single, in_axes=(0, None)))(rngs, max_epochs)
+            res = self._clean_results(res)
+            return self._collect_output(res)
         else:
-            return jax.jit(self._run_single)(rng, max_epochs)
+            res = jax.jit(self._run_single)(rng, max_epochs)
+            return self._collect_output(res)
 
 
 if __name__ == "__main__":
@@ -144,5 +157,5 @@ if __name__ == "__main__":
 
     rng = jax.random.PRNGKey(42)
     gd = GradientDescent(objective_fn, initilization_fn, data, optimizer)
-    runner = gd._run(rng, n_inits=1, obj_threshold=1e-10, grad_threshold=1e-10, max_epochs=10_000)
+    res = gd._run(rng, n_inits=5, obj_threshold=1e-10, grad_threshold=1e-10, max_epochs=10_000)
 
