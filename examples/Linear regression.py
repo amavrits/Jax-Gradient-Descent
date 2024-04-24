@@ -18,7 +18,7 @@ if __name__ == "__main__":
     y = 3 + 2 * x + np.random.normal(size=100)
     data = (np.c_[np.ones_like(x), x], y)
 
-    ols_slope, ols_intercept, _, stderr, intercept_stderr = stats.linregress(x, y)
+    res_analytical = stats.linregress(x, y)
 
     def objective_fn(theta, data):
         yhat = data[0].dot(theta)
@@ -47,27 +47,37 @@ if __name__ == "__main__":
     print(end_time - start_time)
 
 
-    fig, axs = plt.subplots(1, 2)
+    fig, axs = plt.subplots(1, 3, figsize=(8, 5))
 
-    axs[0].scatter(res_boot.theta.mean(axis=0), np.arange(2), color="b", label="GD Bootstrap mean")
-    axs[0].scatter([ols_intercept, ols_slope], np.arange(2)+0.2, color="b", label="Analytical mean")
-
-    axs[0].scatter(res.theta, np.arange(2), marker="x", color="r", label="GD OLS")
-    axs[0].scatter([ols_intercept, ols_slope], np.arange(2)+0.2, marker="x", color="r", label="Analytical OLS")
-
-    axs[0].set_xlabel("Coefficient value", fontsize=12)
-    axs[0].set_ylabel("Coefficient", fontsize=12)
+    axs[0].scatter(res_boot.theta[:, 0].mean(axis=0), ["GD"], color="b", label="Mean")
+    axs[0].plot(np.quantile(res_boot.theta[:, 0], q=[0.05, 0.95]), ["GD", "GD"], color="b", label="90% CI")
+    axs[0].scatter(res.theta[0], ["GD"], color="r", marker="x", label="Optimal fit")
+    axs[0].scatter([res_analytical.intercept], ["OLS"], color="b")
+    axs[0].plot(res_analytical.intercept+stats.norm.ppf([0.05, 0.95])*res_analytical.intercept_stderr,
+                ["OLS", "OLS"], color="b")
+    axs[0].scatter([res_analytical.intercept], ["OLS"], color="r", marker="x")
+    axs[0].set_xlabel("Intercept", fontsize=12)
+    axs[0].set_ylabel("Method", fontsize=12)
     axs[0].legend(fontsize=10)
 
-    axs[1].plot(metrics["epoch"]+1, metrics["objective_value"], color="b", label="Fit")
-    axs[1].plot(metrics["epoch"]+1, metrics_boot["objective_value"].mean(axis=0), linestyle="--", color="b", label="Bootstrap mean")
-    axs[1].fill_between(metrics["epoch"]+1,
-                        # np.quantile(metrics_boot["objective_value"], 0.05, axis=0),
-                        # np.quantile(metrics_boot["objective_value"], 0.95, axis=0),
-                        np.min(metrics_boot["objective_value"], axis=0),
-                        np.max(metrics_boot["objective_value"], axis=0),
+    axs[1].scatter(res_boot.theta[:, 1].mean(axis=0), ["GD"], color="b", label="GD Bootstrap mean")
+    axs[1].plot(np.quantile(res_boot.theta[:, 1], q=[0.05, 0.95]), ["GD", "GD"], color="b", label="GD 90% CI")
+    axs[1].scatter(res.theta[1], ["GD"], color="r", marker="x", label="GD fit")
+    axs[1].scatter([res_analytical.slope], ["OLS"], color="b", label="Analytical mean")
+    axs[1].plot(res_analytical.slope+stats.norm.ppf([0.05, 0.95])*res_analytical.stderr, ["OLS", "OLS"], color="b", label="Analytical 90% CI")
+    axs[1].scatter([res_analytical.slope], ["OLS"], color="r", marker="x", label="Analytical fit")
+    axs[1].set_xlabel("Slope", fontsize=12)
+    axs[1].set_ylabel("Method", fontsize=12)
+
+    axs[2].plot(metrics["epoch"]+1, metrics["objective_value"], color="r", label="Fit")
+    axs[2].plot(metrics["epoch"]+1, metrics_boot["objective_value"].mean(axis=0), color="b", label="Bootstrap mean")
+    axs[2].fill_between(metrics["epoch"]+1,
+                        np.quantile(metrics_boot["objective_value"], 0.05, axis=0),
+                        np.quantile(metrics_boot["objective_value"], 0.95, axis=0),
                         color="b", alpha=0.3, label="Bootstrap 90% CI")
-    axs[1].set_xlabel("Epoch", fontsize=12)
-    axs[1].set_ylabel("Objective value", fontsize=12)
-    axs[1].legend(fontsize=10)
+    axs[2].set_xlabel("Epoch", fontsize=12)
+    axs[2].set_ylabel("Objective value", fontsize=12)
+    axs[2].legend(fontsize=10)
+
+    plt.tight_layout()
 
