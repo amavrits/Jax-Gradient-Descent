@@ -1,4 +1,4 @@
-from src.main import GradientDescent
+from src.main import GradientDescent as GD
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -39,9 +39,9 @@ if __name__ == "__main__":
 
     rng = jax.random.PRNGKey(42)
     rng_fit, rng_boot = jax.random.split(rng, 2)
-    gd = GradientDescent(objective_fn, initilization_fn, data, optimizer, obj_threshold=1e-3, grad_threshold=1e-3, max_epochs=2_000)
+    gd = GD(objective_fn, initilization_fn, data, optimizer, obj_threshold=1e-3, grad_threshold=1e-3, max_epochs=2_000)
     start_time = time()
-    res, metrics = gd._run(rng_fit, n_inits=10)
+    res, metrics = gd.fit(rng_fit, n_inits=100)
     res_boot, metrics_boot = gd._bootstrap(rng_boot, n_inits=1, n_boot=1_000)
     end_time = time()
     print(end_time - start_time)
@@ -60,14 +60,14 @@ if __name__ == "__main__":
     axs[0].legend(fontsize=10)
 
     axs[1].plot(metrics["epoch"]+1, metrics["objective_value"], color="b", label="Fit")
-    axs[1].plot(metrics["epoch"]+1,metrics_boot["objective_value"].mean(axis=0), linestyle="--", color="b", label="Bootstrap mean")
+    axs[1].plot(metrics["epoch"]+1, metrics_boot["objective_value"].mean(axis=0), linestyle="--", color="b", label="Bootstrap mean")
     axs[1].fill_between(metrics["epoch"]+1,
-                        np.quantile(metrics_boot["objective_value"], 0.05, axis=0),
-                        np.quantile(metrics_boot["objective_value"], 0.95, axis=0),
+                        # np.quantile(metrics_boot["objective_value"], 0.05, axis=0),
+                        # np.quantile(metrics_boot["objective_value"], 0.95, axis=0),
+                        np.min(metrics_boot["objective_value"], axis=0),
+                        np.max(metrics_boot["objective_value"], axis=0),
                         color="b", alpha=0.3, label="Bootstrap 90% CI")
     axs[1].set_xlabel("Epoch", fontsize=12)
     axs[1].set_ylabel("Objective value", fontsize=12)
     axs[1].legend(fontsize=10)
-
-
 

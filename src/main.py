@@ -35,6 +35,7 @@ class GradientDescent:
         self.initilization_fn = initilization_fn
         self.optimizer = optimizer
         self.data = tuple([jnp.asarray(d) for d in data])
+        self.n_datapoints = self.data[0].shape[0]
         self.obj_threshold = obj_threshold
         self.grad_threshold = grad_threshold
         self.max_epochs = max_epochs
@@ -85,10 +86,9 @@ class GradientDescent:
                 step=res.step[jnp.arange(n_boot), idx_fittest],
                 obj_keeper=res.obj_keeper[jnp.arange(n_boot), idx_fittest],
                 grads_keeper=res.grads_keeper[jnp.arange(n_boot), idx_fittest, :],
-                max_epochs=res.max_epochs[jnp.arange(n_boot), idx_fittest]
             )
 
-            metrics = {key: np.asarray(val[idx_fittest, :]) for (key, val) in metrics.items()}
+            metrics = {key: np.asarray(val[jnp.arange(n_boot), idx_fittest, :]) for (key, val) in metrics.items()}
 
         return res, metrics
 
@@ -120,35 +120,11 @@ class GradientDescent:
 
         return converged, convergence_epoch
 
-    @partial(jax.jit, static_argnums=(0,))
-    def _step(self, args, epoch):
-
-        training, data = args
-
-        obj_value, grads = jax.jit(jax.value_and_grad(self.objective_fn, argnums=0, has_aux=False))(training.params, data)
-
-        converged, convergence_epoch = self._check_convergence(training, obj_value, grads)
-
-        training = training.apply_gradients(grads=grads)
-        training = training.replace(
-            obj_keeper=obj_value.squeeze(),
-            grads_keeper=grads,
-            converged=converged,
-            convergence_epoch=convergence_epoch
-        )
-
-        metrics = {
-            "objective_value": obj_value,
-            "epoch": epoch,
-            "converged": converged
-        }
-
-        return (training, data), metrics
-
     @partial(jax.jit, static_argnums=(0, ))
     def _run_single(self, rng, data):
 
-        theta_init = self._initialize_theta(rng)
+        rng, rng_init = jax.random.split(rng, 2)
+        theta_init = self._initialize_theta(rng_init)
 
         training = TrainState.create(
             apply_fn=self.objective_fn,
@@ -160,21 +136,16 @@ class GradientDescent:
             tx=self.optimizer
         )
 
-        step_runner = (training, data)
-        (training, data), metrics = lax.scan(scan_tqdm(self.max_epochs)(self._step), step_runner, jnp.arange(self.max_epochs), self.max_epochs)
+        step_runner = (training, data, rng)
+
+        (training, data, _), metrics = lax.scan(
+            scan_tqdm(self.max_epochs)(self._step),
+            step_runner,
+            jnp.arange(self.max_epochs),
+            self.max_epochs
+        )
 
         return training, metrics
-
-    def _run(self, rng, n_inits=1):
-
-        if n_inits > 1:
-            rngs = jax.random.split(rng, n_inits)
-            res, metrics = jax.jit(jax.vmap(self._run_single, in_axes=(0, None)))(rngs, self.data)
-            res, metrics = self._clean_results(res, metrics)
-            return (self._collect_output(res), metrics)
-        else:
-            res, metrics = jax.jit(self._run_single)(rng, self.data)
-            return (self._collect_output(res), metrics)
 
     def _bootstrap(self, rng, n_inits=1, n_boot=1_000):
 
@@ -199,4 +170,46 @@ class GradientDescent:
         else:
             res, metrics = jax.jit(jax.vmap(self._run_single, in_axes=(None, 0)))(rng, data_boot)
             return (self._collect_output(res), metrics)
+
+    def fit(self, rng, n_inits=1):
+
+        rng, rng_data = jax.random.split(rng, 2)
+        data, rng = self.prepare_data(rng_data)
+
+        if n_inits > 1:
+            rngs = jax.random.split(rng, n_inits)
+            res, metrics = jax.jit(jax.vmap(self._run_single, in_axes=(0, None)))(rngs, data)
+            res, metrics = self._clean_results(res, metrics)
+            return (self._collect_output(res), metrics)
+        else:
+            res, metrics = jax.jit(self._run_single)(rng, data)
+            return (self._collect_output(res), metrics)
+
+    def prepare_data(self, rng):
+        return self.data, rng
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _step(self, args, epoch):
+
+        training, data, rng = args
+
+        obj_value, grads = jax.jit(jax.value_and_grad(self.objective_fn, argnums=0, has_aux=False))(training.params, data)
+
+        converged, convergence_epoch = self._check_convergence(training, obj_value, grads)
+
+        training = training.apply_gradients(grads=grads)
+        training = training.replace(
+            obj_keeper=obj_value.squeeze(),
+            grads_keeper=grads,
+            converged=converged,
+            convergence_epoch=convergence_epoch
+        )
+
+        metrics = {
+            "objective_value": obj_value,
+            "epoch": epoch,
+            "converged": converged
+        }
+
+        return (training, data, rng), metrics
 
