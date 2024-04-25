@@ -9,13 +9,18 @@ from time import time
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
 
 if __name__ == "__main__":
 
+    n = 100
     np.random.seed(42)
-    x = np.random.normal(size=100)
+    x = np.random.normal(size=n)
     np.random.seed(32)
-    y = 3 + 2 * x + np.random.normal(size=100)
+    intercept_true, slope_true = 3, 2
+    yhat_true = intercept_true + slope_true * x
+    y = yhat_true + np.random.normal(size=n)
+    mse_true = np.sum((y - yhat_true)**2) / y.size
     data = (np.c_[np.ones_like(x), x], y)
 
     res_analytical = stats.linregress(x, y)
@@ -42,7 +47,7 @@ if __name__ == "__main__":
     gd = GD(objective_fn, initilization_fn, data, optimizer, obj_threshold=1e-3, grad_threshold=1e-3, max_epochs=2_000)
     start_time = time()
     res, metrics = gd.fit(rng_fit, n_inits=100)
-    res_boot, metrics_boot = gd._bootstrap(rng_boot, n_inits=1, n_boot=1_000)
+    res_boot, metrics_boot = gd._bootstrap(rng_boot, n_inits=100, n_boot=100)
     end_time = time()
     print(end_time - start_time)
 
@@ -80,4 +85,25 @@ if __name__ == "__main__":
     axs[2].legend(fontsize=10)
 
     plt.tight_layout()
+
+
+    intercept_grid = np.linspace(2, 4, 50)
+    slope_grid = np.linspace(1, 3, 50)
+    intercept_mesh, slope_mesh = np.meshgrid(intercept_grid, slope_grid)
+    yhat_mesh = intercept_mesh[..., None] + slope_mesh[..., None] * x[None, None, :]
+    mse_mesh = np.sum((y[None, None, :] - yhat_mesh)**2, axis=-1) / y.size
+
+    gd_path = np.c_[metrics["theta"], metrics["objective_value"]]
+
+    fig = plt.figure()
+    ax = plt.axes(projection="3d")
+    ax.plot_surface(intercept_mesh, slope_mesh, mse_mesh, rstride=1, cstride=1, cmap="jet", edgecolor="none", alpha=0.6)
+    ax.plot3D(gd_path[:, 0], gd_path[:, 1], gd_path[:, 2]+0.1, color="r")
+    ax.plot3D(gd_path[:, 0], gd_path[:, 1], np.zeros(gd_path.shape[0]), color="r")
+    ax.scatter3D([intercept_true], [slope_true], mse_true, color="g", marker="x")
+    # ax.scatter3D(metrics_boot["theta"][:, 0, -1], metrics_boot["theta"][:, 1, -1], metrics_boot["objective_value"][:, -1],  color="b", marker="x")
+    # ax.scatter3D(metrics_boot["theta"][:, 0, -1], metrics_boot["theta"][:, 1, -1], np.zeros(metrics_boot["objective_value"].shape[0]),  color="b", marker="x")
+    ax.set_xlabel("Intercept", fontsize=12)
+    ax.set_ylabel("Slope", fontsize=12)
+    ax.set_zlabel("MSE", fontsize=12)
 

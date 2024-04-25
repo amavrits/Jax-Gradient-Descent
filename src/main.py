@@ -89,6 +89,7 @@ class GradientDescent:
             )
 
             metrics = {key: np.asarray(val[jnp.arange(n_boot), idx_fittest, :]) for (key, val) in metrics.items()}
+            metrics["theta"] = np.transpose(metrics["theta"], (0, 2, 1))
 
         return res, metrics
 
@@ -208,6 +209,7 @@ class GradientDescent:
         metrics = {
             "objective_value": obj_value,
             "epoch": epoch,
+            "theta": training.params,
             "converged": converged
         }
 
