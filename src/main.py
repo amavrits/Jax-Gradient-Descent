@@ -105,7 +105,6 @@ class GradientDescent:
 
         return jnp.where(jnp.logical_and(old_converged, converged), old_convergence_epoch, epoch)
 
-
     @partial(jax.jit, static_argnums=(0,))
     def _check_convergence(self, training, obj_value, grads):
 
@@ -163,13 +162,13 @@ class GradientDescent:
 
         if n_inits > 1:
             rngs = jax.random.split(rng, n_inits)
-            res, metrics = jax.jit(jax.vmap(
+            res, metrics = jax.block_until_ready(jax.jit(jax.vmap(
                 jax.vmap(self._run_single, in_axes=(0, None)),
-                in_axes=(None, 0)))(rngs, data_boot)
+                in_axes=(None, 0))))(rngs, data_boot)
             res, metrics = self._clean_results(res, metrics)
             return (self._collect_output(res), metrics)
         else:
-            res, metrics = jax.jit(jax.vmap(self._run_single, in_axes=(None, 0)))(rng, data_boot)
+            res, metrics = jax.block_until_ready(jax.jit(jax.vmap(self._run_single, in_axes=(None, 0))))(rng, data_boot)
             return (self._collect_output(res), metrics)
 
     def fit(self, rng, n_inits=1):
@@ -179,11 +178,11 @@ class GradientDescent:
 
         if n_inits > 1:
             rngs = jax.random.split(rng, n_inits)
-            res, metrics = jax.jit(jax.vmap(self._run_single, in_axes=(0, None)))(rngs, data)
+            res, metrics = jax.block_until_ready(jax.jit(jax.vmap(self._run_single, in_axes=(0, None))))(rngs, data)
             res, metrics = self._clean_results(res, metrics)
             return (self._collect_output(res), metrics)
         else:
-            res, metrics = jax.jit(self._run_single)(rng, data)
+            res, metrics = jax.block_until_ready(jax.jit(self._run_single))(rng, data)
             return (self._collect_output(res), metrics)
 
     def prepare_data(self, rng):

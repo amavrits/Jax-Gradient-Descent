@@ -11,6 +11,15 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 
+def objective_fn(theta, data):
+    yhat = data[0].dot(theta)
+    y = data[1]
+    loss = jnp.sum((y - yhat) ** 2) / y.size
+    return loss
+
+def initilization_fn(rng):
+    return jax.random.normal(rng, shape=(2,))
+
 if __name__ == "__main__":
 
     n = 100
@@ -25,15 +34,6 @@ if __name__ == "__main__":
 
     res_analytical = stats.linregress(x, y)
 
-    def objective_fn(theta, data):
-        yhat = data[0].dot(theta)
-        y = data[1]
-        loss = jnp.sum((y - yhat)**2) / y.size
-        return loss
-
-    def initilization_fn(rng):
-        return jax.random.normal(rng, shape=(2, ))
-
     scheduler = optax.exponential_decay(init_value=1e-3, transition_steps=1000, decay_rate=0.99)
     optimizer = optax.chain(
         optax.clip_by_global_norm(1.0),  # Clip by the gradient by the global norm.
@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     rng = jax.random.PRNGKey(42)
     rng_fit, rng_boot = jax.random.split(rng, 2)
-    gd = GD(objective_fn, initilization_fn, data, optimizer, obj_threshold=1e-3, grad_threshold=1e-3, max_epochs=2_000)
+    gd = GD(objective_fn, initilization_fn, data, optimizer, obj_threshold=1e-3, grad_threshold=1e-3, max_epochs=5_000)
     start_time = time()
     res, metrics = gd.fit(rng_fit, n_inits=100)
     res_boot, metrics_boot = gd._bootstrap(rng_boot, n_inits=100, n_boot=100)
@@ -97,13 +97,19 @@ if __name__ == "__main__":
 
     fig = plt.figure()
     ax = plt.axes(projection="3d")
-    ax.plot_surface(intercept_mesh, slope_mesh, mse_mesh, rstride=1, cstride=1, cmap="jet", edgecolor="none", alpha=0.6)
-    ax.plot3D(gd_path[:, 0], gd_path[:, 1], gd_path[:, 2]+0.1, color="r")
+    ax.plot_surface(intercept_mesh, slope_mesh, mse_mesh, rstride=1, cstride=1, cmap="jet", edgecolor="none", alpha=0.6, label="Objective function")
+    ax.plot3D(gd_path[:, 0], gd_path[:, 1], gd_path[:, 2]+0.1, color="r", label="GD path")
     ax.plot3D(gd_path[:, 0], gd_path[:, 1], np.zeros(gd_path.shape[0]), color="r")
-    ax.scatter3D([intercept_true], [slope_true], mse_true, color="g", marker="x")
+    ax.scatter3D([intercept_true], [slope_true], mse_true, color="g", marker="x", label="True parameters")
+    ax.scatter3D([intercept_true], [slope_true], 0, color="g", marker="x")
+    # ax.contour(intercept_mesh, slope_mesh, mse_mesh)
+    ax.contour(intercept_mesh, slope_mesh, mse_mesh, zdir="z", offset=0.01, colors="k", linewidths=1)
     # ax.scatter3D(metrics_boot["theta"][:, 0, -1], metrics_boot["theta"][:, 1, -1], metrics_boot["objective_value"][:, -1],  color="b", marker="x")
     # ax.scatter3D(metrics_boot["theta"][:, 0, -1], metrics_boot["theta"][:, 1, -1], np.zeros(metrics_boot["objective_value"].shape[0]),  color="b", marker="x")
     ax.set_xlabel("Intercept", fontsize=12)
     ax.set_ylabel("Slope", fontsize=12)
     ax.set_zlabel("MSE", fontsize=12)
-
+    ax.set_xlim(intercept_grid.min(), intercept_grid.max())
+    ax.set_ylim(slope_grid.min(), slope_grid.max())
+    ax.set_zlim(0, mse_mesh.max()+.5)
+    ax.legend(fontsize=10)
